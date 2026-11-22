@@ -1,35 +1,110 @@
 name: Functional Tests
 
+# SECURITY: this workflow runs pull request code with cloud credentials.
+# It is triggered by a comment, so it always runs from the default branch
+# with access to secrets and OIDC, whoever opened the pull request.
+# Every control below is load-bearing:
+#   1. gate: the commenter must have write access to this repository.
+#   2. gate: the pull request must come from a branch in this repository.
+#   3. gate: the head commit is resolved once and every job tests that commit.
+#   4. cloud jobs: run in the `functional-tests` environment, which must be
+#      configured with required reviewers, and whose name the cloud trust
+#      policies must require in the OIDC subject claim.
+# Do not relax any of these without a security review.
+
 on:
   issue_comment:
     types: [created]
 
+permissions: {}
+
+concurrency:
+  group: functional-tests-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   gate:
+    name: Authorize request
     if: ${{ github.event.issue.pull_request && github.event.comment.body == '/functional-test' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      head_sha: ${{ steps.pr.outputs.head_sha }}
     steps:
+      - name: Require write access from the commenter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          # `push` is true for the write, maintain and admin roles, and for
+          # custom roles that include write access. Anything other than a
+          # literal "true", including a failed lookup, is a refusal.
+          if ! can_push=$(gh api "repos/${REPO}/collaborators/${COMMENTER}/permission" --jq '.user.permissions.push'); then
+            echo "::error::could not look up repository access for ${COMMENTER}"
+            exit 1
+          fi
+          if [[ "${can_push}" != "true" ]]; then
+            echo "::error::${COMMENTER} does not have write access, which is required to run functional tests"
+            exit 1
+          fi
+          echo "${COMMENTER} has write access"
+
+      - id: pr
+        name: Resolve pull request head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          if ! pr=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}"); then
+            echo "::error::could not read pull request #${PR_NUMBER}"
+            exit 1
+          fi
+          state=$(jq -r .state <<<"${pr}")
+          head_repo=$(jq -r '.head.repo.full_name // ""' <<<"${pr}")
+          head_sha=$(jq -r .head.sha <<<"${pr}")
+
+          if [[ "${state}" != "open" ]]; then
+            echo "::error::pull request #${PR_NUMBER} is ${state}"
+            exit 1
+          fi
+          # Fork pull requests cannot push the controller image these tests
+          # deploy, and their code must never run with cloud credentials.
+          if [[ "${head_repo}" != "${REPO}" ]]; then
+            echo "::error::functional tests only run for branches in ${REPO}, not '${head_repo}'"
+            exit 1
+          fi
+          if [[ ! "${head_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::could not resolve the head commit of #${PR_NUMBER}"
+            exit 1
+          fi
+
+          echo "head_sha=${head_sha}" >> "${GITHUB_OUTPUT}"
+          echo "Functional tests requested by @${GITHUB_ACTOR} for #${PR_NUMBER} at \`${head_sha}\`" >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Update PR Comment
-        if: github.event_name != 'pull_request'
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043 # v4.0.0
         with:
           comment-id: ${{ github.event.comment.id }}
           reactions: rocket
           body: |
             <br>
-            **Launched workflow:** [Functional tests](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            **Launched workflow:** [Functional tests](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) at `${{ steps.pr.outputs.head_sha }}`
 
   aks:
     name: AKS image building
     runs-on: ubuntu-latest
     needs: [gate]
+    environment: functional-tests
     permissions:
       contents: read
       id-token: write
-      pull-requests: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Run functional test suite
         uses: ./.github/actions/cloud-image-building
@@ -45,22 +120,23 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         with:
           target: aks
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          pr_number: ${{ github.event.issue.number }}
+          head_sha: ${{ needs.gate.outputs.head_sha }}
 
   gke:
     name: GKE image building
     runs-on: ubuntu-latest
     needs: [gate]
+    environment: functional-tests
     permissions:
       contents: read
       id-token: write
-      pull-requests: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
           service_account: ${{ secrets.GCP_IAM_SERVICE_ACCOUNT }}
           workload_identity_provider: ${{ secrets.GCP_IAM_WORKLOAD_IDENTITY_PROVIDER }}
@@ -72,22 +148,23 @@ jobs:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         with:
           target: gke
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          pr_number: ${{ github.event.issue.number }}
+          head_sha: ${{ needs.gate.outputs.head_sha }}
 
   eks:
     name: EKS image building
     runs-on: ubuntu-latest
     needs: [gate]
+    environment: functional-tests
     permissions:
       contents: read
       id-token: write
-      pull-requests: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Authenticate with AWS
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE }}
           aws-region: ${{ secrets.AWS_REGION }}
@@ -98,4 +175,5 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
         with:
           target: eks
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          pr_number: ${{ github.event.issue.number }}
+          head_sha: ${{ needs.gate.outputs.head_sha }}

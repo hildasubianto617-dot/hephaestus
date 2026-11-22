@@ -4,24 +4,39 @@ inputs:
   verbose:
     description: Enable debug logging when running tests
     default: "false"
-  github_token:
-    description: GitHub token provided by workflow or PAT
-    required: true
   target:
     description: Target cloud-provided Kubernetes (e.g. aks, eks, gke)
+    required: true
+  pr_number:
+    description: Pull request whose code is tested
+    required: true
+  head_sha:
+    description: Exact commit authorized by the workflow gate; no other commit is tested
     required: true
 runs:
   using: composite
   steps:
-    - name: Checkout pull request
-      if: github.event_name != 'pull_request'
+    # The code checked out here runs with cloud credentials. Only the commit
+    # the gate authorized may be tested, never "whatever the head is now".
+    - name: Checkout authorized pull request commit
       env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-      run: gh pr checkout ${{ github.event.issue.number }} --detach
+        PR_NUMBER: ${{ inputs.pr_number }}
+        HEAD_SHA: ${{ inputs.head_sha }}
+      run: |
+        if [[ ! "${PR_NUMBER}" =~ ^[0-9]+$ || ! "${HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "::error::invalid pull request number or head commit"
+          exit 1
+        fi
+        git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head"
+        git checkout --detach "${HEAD_SHA}"
+        if [[ "$(git rev-parse HEAD)" != "${HEAD_SHA}" ]]; then
+          echo "::error::checked out commit does not match the authorized commit"
+          exit 1
+        fi
       shell: bash
 
     - name: Install Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
       with:
         go-version-file: test/functional/go.mod
         cache-dependency-path: test/functional/go.sum
@@ -34,22 +49,27 @@ runs:
       shell: bash
 
     - name: Install Helm
-      uses: azure/setup-helm@v4
+      uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
 
     - name: Run tests
       env:
         VERBOSE_TESTING: ${{ inputs.verbose }}
+        TEST_TARGET: ${{ inputs.target }}
       run: |
         export MANAGER_IMAGE_TAG=sha-$(git rev-parse --short HEAD)
         cd test/functional
-        go test -v -timeout 0 -tags functional,${{ inputs.target }}
+        go test -v -timeout 0 -tags "functional,${TEST_TARGET}"
       shell: bash
 
-    - name: Save testenv files
+    # This repository is public, so artifacts are too. The testenv working
+    # directory also holds Terraform state, tfvars and kubeconfigs under names
+    # we do not control, so upload only the cluster-info dump by name and
+    # never the directory as a whole.
+    - name: Save cluster-info dump
       if: ${{ always() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: testenv-${{ inputs.target }}
-        path: |
-          test/functional/testenv
-          !test/functional/testenv/**/.terraform/
+        path: test/functional/testenv/**/cluster-info/
+        if-no-files-found: ignore
+        retention-days: 7
