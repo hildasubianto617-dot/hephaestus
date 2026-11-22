@@ -11,31 +11,52 @@ on:
         required: true
         type: string
 
+# Jobs get a read-only token unless they ask for more below.
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   verify-multiarch:
     name: Verify Multi-arch Images
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    # This workflow runs with secrets. Only verify CI runs that came from
+    # this repository, never ones triggered by a fork.
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_repository.full_name == github.repository) }}
     permissions:
       contents: read
       packages: read
       id-token: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Determine image tag
         id: tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "tag=${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
+            if [[ ! "${IMAGE_TAG}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+              echo "::error::image_tag is not a valid image tag"
+              exit 1
+            fi
+            echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           else
             # Extract tag from the triggering workflow
-            echo "tag=sha-$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+            if [[ ! "${HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::unexpected head commit"
+              exit 1
+            fi
+            echo "tag=sha-${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -57,19 +78,30 @@ jobs:
     needs: verify-multiarch
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Determine image tag
         id: tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "tag=${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
+            if [[ ! "${IMAGE_TAG}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+              echo "::error::image_tag is not a valid image tag"
+              exit 1
+            fi
+            echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=sha-$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+            if [[ ! "${HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::unexpected head commit"
+              exit 1
+            fi
+            echo "tag=sha-${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -109,19 +141,30 @@ jobs:
     needs: verify-multiarch
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Determine image tag
         id: tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "tag=${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
+            if [[ ! "${IMAGE_TAG}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+              echo "::error::image_tag is not a valid image tag"
+              exit 1
+            fi
+            echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=sha-$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+            if [[ ! "${HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::unexpected head commit"
+              exit 1
+            fi
+            echo "tag=sha-${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -162,15 +205,26 @@ jobs:
     steps:
       - name: Determine image tag
         id: tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "tag=${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
+            if [[ ! "${IMAGE_TAG}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+              echo "::error::image_tag is not a valid image tag"
+              exit 1
+            fi
+            echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=sha-$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+            if [[ ! "${HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::unexpected head commit"
+              exit 1
+            fi
+            echo "tag=sha-${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
