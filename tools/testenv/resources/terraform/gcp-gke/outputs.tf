@@ -11,5 +11,5 @@ output "repository" {
 
 output "service_account" {
   description = "The email of a service account that has RW permissions to the test GAR repository."
-  value       = google_service_account.external_agent.email
+  value       = var.agent_service_account
 }

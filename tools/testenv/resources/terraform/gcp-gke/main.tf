@@ -60,6 +60,11 @@ module "gke" {
 
   deletion_protection = false
 
+  # Nodes run as a pre-created service account so that creating a test
+  # cluster needs no permission to create service accounts or change IAM.
+  create_service_account = false
+  service_account        = var.node_service_account
+
   node_pools = [
     {
       name         = "default-node-pool"
@@ -89,26 +94,4 @@ resource "google_artifact_registry_repository" "repo" {
   format        = "DOCKER"
   repository_id = local.name
   description   = "Created by Domino Data Lab testenv tooling"
-}
-
-resource "google_service_account" "external_agent" {
-  project      = var.project_id
-  account_id   = local.name
-  display_name = local.name
-  description  = "Created by Domino Data Lab testenv tooling"
-}
-
-resource "google_service_account_iam_binding" "external_agent_k8s_sa_binding" {
-  role               = "roles/iam.workloadIdentityUser"
-  service_account_id = google_service_account.external_agent.name
-
-  members = [
-    "serviceAccount:${var.project_id}.svc.id.goog[${var.kubernetes_service_account}]"
-  ]
-}
-
-resource "google_project_iam_member" "external_agent_gar_rw" {
-  project = var.project_id
-  member  = "serviceAccount:${google_service_account.external_agent.email}"
-  role    = "roles/artifactregistry.writer"
 }

@@ -35,10 +35,11 @@ func (suite *GKETestSuite) SetupSuite() {
 	suite.CloudAuthTest = suite.testCloudAuth
 	suite.CloudConfigFunc = func() testenv.CloudConfig {
 		return testenv.GKEConfig{
-			Region:                   suite.region,
-			ProjectID:                suite.projectID,
-			KubernetesVersion:        os.Getenv("KUBERNETES_VERSION"),
-			KubernetesServiceAccount: "default/hephaestus",
+			Region:              suite.region,
+			ProjectID:           suite.projectID,
+			KubernetesVersion:   os.Getenv("KUBERNETES_VERSION"),
+			AgentServiceAccount: os.Getenv("GCP_AGENT_SERVICE_ACCOUNT"),
+			NodeServiceAccount:  os.Getenv("GCP_NODE_SERVICE_ACCOUNT"),
 		}
 	}
 	suite.VariableFunc = func(ctx context.Context) {

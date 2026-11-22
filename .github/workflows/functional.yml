@@ -146,6 +146,8 @@ jobs:
         env:
           GCP_REGION: ${{ secrets.GCP_REGION }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_AGENT_SERVICE_ACCOUNT: ${{ secrets.GCP_AGENT_SERVICE_ACCOUNT }}
+          GCP_NODE_SERVICE_ACCOUNT: ${{ secrets.GCP_NODE_SERVICE_ACCOUNT }}
         with:
           target: gke
           pr_number: ${{ github.event.issue.number }}

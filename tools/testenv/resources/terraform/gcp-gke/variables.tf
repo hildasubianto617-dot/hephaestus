@@ -8,9 +8,14 @@ variable "region" {
   description = "The region in which the cluster is hosted."
 }
 
-variable "kubernetes_service_account" {
+variable "agent_service_account" {
   type        = string
-  description = "The Kubernetes <namespace>/<service-account> name that will impersonate the IAM service account with GAR permissions."
+  description = "Email of a pre-created service account that the controller impersonates through Workload Identity. It needs roles/artifactregistry.writer in the project, and roles/iam.workloadIdentityUser granted to the controller's Kubernetes service account."
+}
+
+variable "node_service_account" {
+  type        = string
+  description = "Email of a pre-created service account that cluster nodes run as. The identity running Terraform needs roles/iam.serviceAccountUser on it."
 }
 
 variable "kubernetes_version" {

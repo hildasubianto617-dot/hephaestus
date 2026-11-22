@@ -17,8 +17,11 @@ type GKEConfig struct {
 	ProjectID string
 	// KubernetesVersion supported by GKE.
 	KubernetesVersion string
-	// KubernetesServiceAccount that should be granted access to the test Google Artifact Registry.
-	KubernetesServiceAccount string
+	// AgentServiceAccount is the email of a pre-created service account the controller impersonates
+	// through Workload Identity to push to the test Google Artifact Registry.
+	AgentServiceAccount string
+	// NodeServiceAccount is the email of a pre-created service account the cluster nodes run as.
+	NodeServiceAccount string
 }
 
 // ResourcePath to Terraform module.
@@ -33,7 +36,8 @@ func (c GKEConfig) Vars() []byte {
 	root := f.Body()
 	root.SetAttributeValue("region", cty.StringVal(c.Region))
 	root.SetAttributeValue("project_id", cty.StringVal(c.ProjectID))
-	root.SetAttributeValue("kubernetes_service_account", cty.StringVal(c.KubernetesServiceAccount))
+	root.SetAttributeValue("agent_service_account", cty.StringVal(c.AgentServiceAccount))
+	root.SetAttributeValue("node_service_account", cty.StringVal(c.NodeServiceAccount))
 
 	if strings.TrimSpace(c.KubernetesVersion) != "" {
 		root.SetAttributeValue("kubernetes_version", cty.StringVal(c.KubernetesVersion))
@@ -52,8 +56,12 @@ func (c GKEConfig) Validate() (err error) {
 		err = multierror.Append(err, errors.New("GCP project id cannot be blank"))
 	}
 
-	if strings.TrimSpace(c.KubernetesServiceAccount) == "" {
-		err = multierror.Append(err, errors.New("kubernetes service account cannot be blank"))
+	if strings.TrimSpace(c.AgentServiceAccount) == "" {
+		err = multierror.Append(err, errors.New("agent service account cannot be blank"))
+	}
+
+	if strings.TrimSpace(c.NodeServiceAccount) == "" {
+		err = multierror.Append(err, errors.New("node service account cannot be blank"))
 	}
 
 	return err
